@@ -265,10 +265,8 @@ export default function Questionnaires() {
                     data-testid={`button-edit-${questionnaire.id}`}
                   >
                     <Link href={`/questionnaires/${questionnaire.id}`}>
-                      <a className="gap-2">
-                        <Edit className="h-3 w-3" />
-                        Edit
-                      </a>
+                      <Edit className="h-3 w-3" />
+                      Edit
                     </Link>
                   </Button>
                   <Button
@@ -286,8 +284,9 @@ export default function Questionnaires() {
                     asChild
                     data-testid={`button-preview-${questionnaire.id}`}
                   >
-                    <a href={`/q/${questionnaire.id}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`/q/${questionnaire.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
                       <ExternalLink className="h-3 w-3" />
+                      Preview
                     </a>
                   </Button>
                   <Button

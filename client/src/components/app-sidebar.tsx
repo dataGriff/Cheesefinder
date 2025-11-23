@@ -66,18 +66,16 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/dashboard">
-          <a className="flex items-center gap-2" data-testid="sidebar-logo">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
-              <span className="text-lg font-bold text-primary-foreground">🧀</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-semibold">CheeseFinder</span>
-              {user?.companyName && (
-                <span className="text-xs text-muted-foreground">{user.companyName}</span>
-              )}
-            </div>
-          </a>
+        <Link href="/dashboard" className="flex items-center gap-2 rounded-md p-2 no-underline hover-elevate active-elevate-2" data-testid="sidebar-logo">
+          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
+            <span className="text-lg font-bold text-primary-foreground">🧀</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-lg font-semibold">CheeseFinder</span>
+            {user?.companyName && (
+              <span className="text-xs text-muted-foreground">{user.companyName}</span>
+            )}
+          </div>
         </Link>
       </SidebarHeader>
 
@@ -88,12 +86,10 @@ export function AppSidebar() {
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild isActive={location === item.url}>
+                  <SidebarMenuButton asChild isActive={location === item.url} data-testid={item.testId}>
                     <Link href={item.url}>
-                      <a className="flex items-center gap-2" data-testid={item.testId}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </a>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

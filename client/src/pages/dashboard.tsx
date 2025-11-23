@@ -109,18 +109,14 @@ export default function Dashboard() {
         <div className="flex gap-2">
           <Button asChild data-testid="button-new-product">
             <Link href="/products">
-              <a className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Product
-              </a>
+              <Plus className="h-4 w-4" />
+              Add Product
             </Link>
           </Button>
           <Button asChild data-testid="button-new-questionnaire">
             <Link href="/questionnaires">
-              <a className="gap-2">
-                <Plus className="h-4 w-4" />
-                New Questionnaire
-              </a>
+              <Plus className="h-4 w-4" />
+              New Questionnaire
             </Link>
           </Button>
         </div>
@@ -146,9 +142,9 @@ export default function Dashboard() {
                 {stat.description}
               </p>
               {stat.link && (
-                <Button variant="link" className="mt-2 h-auto p-0" asChild>
+                <Button variant="ghost" className="mt-2 h-auto p-0 text-xs" asChild>
                   <Link href={stat.link}>
-                    <a className="text-xs">{stat.linkText} →</a>
+                    {stat.linkText} →
                   </Link>
                 </Button>
               )}
@@ -169,10 +165,8 @@ export default function Dashboard() {
           <CardContent>
             <Button asChild className="w-full" data-testid="button-create-questionnaire">
               <Link href="/questionnaires">
-                <a className="gap-2">
-                  <ClipboardList className="h-4 w-4" />
-                  Build Questionnaire
-                </a>
+                <ClipboardList className="h-4 w-4" />
+                Build Questionnaire
               </Link>
             </Button>
           </CardContent>
@@ -186,12 +180,10 @@ export default function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild className="w-full" variant="outline" data-testid="button-add-products">
+            <Button asChild className="w-full" data-testid="button-add-products">
               <Link href="/products">
-                <a className="gap-2">
-                  <Package className="h-4 w-4" />
-                  Manage Products
-                </a>
+                <Package className="h-4 w-4" />
+                Manage Products
               </Link>
             </Button>
           </CardContent>
