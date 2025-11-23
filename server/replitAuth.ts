@@ -6,10 +6,15 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import MemoryStore from "memorystore";
 import { storage } from "./storage";
 
 const getOidcConfig = memoize(
   async () => {
+    // Skip OIDC config in dev mode
+    if (process.env.DEV_MODE === 'true') {
+      return null;
+    }
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
       process.env.REPL_ID!
@@ -20,6 +25,25 @@ const getOidcConfig = memoize(
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  
+  // For development mode without PostgreSQL sessions
+  if (process.env.DEV_MODE === 'true') {
+    const memoryStore = MemoryStore(session);
+    return session({
+      secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+      store: new memoryStore({
+        checkPeriod: sessionTtl
+      }),
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: sessionTtl,
+      },
+    });
+  }
+  
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -68,7 +92,54 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Development mode bypass
+  if (process.env.DEV_MODE === 'true') {
+    // Simple dev auth routes
+    app.get("/api/login", async (req, res) => {
+      try {
+        // Create/upsert the dev user in the database
+        const devUser = {
+          id: "dev-user-123",
+          email: "dev@cheesefinder.local",
+          firstName: "Dev",
+          lastName: "User",
+          profileImageUrl: null,
+        };
+        
+        await storage.upsertUser(devUser);
+      } catch (error) {
+        // Silently handle expected constraint violations during dev user creation
+      }
+      
+      // Auto-login with mock user in dev mode
+      req.login({ 
+        claims: { 
+          sub: "dev-user-123", 
+          email: "dev@cheesefinder.local",
+          first_name: "Dev",
+          last_name: "User"
+        } 
+      }, () => {
+        res.redirect("/dashboard");
+      });
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+    
+    return;
+  }
+
   const config = await getOidcConfig();
+  if (!config) {
+    throw new Error("Failed to get OIDC config");
+  }
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -115,7 +186,7 @@ export async function setupAuth(app: Express) {
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
+      successReturnToOrRedirect: "/dashboard",
       failureRedirect: "/api/login",
     })(req, res, next);
   });
@@ -133,6 +204,22 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  // Development mode bypass
+  if (process.env.DEV_MODE === 'true') {
+    // Auto-authenticate with mock user
+    if (!req.user) {
+      (req as any).user = { 
+        claims: { 
+          sub: "dev-user-123", 
+          email: "dev@cheesefinder.local",
+          first_name: "Dev",
+          last_name: "User"
+        } 
+      };
+    }
+    return next();
+  }
+
   const user = req.user as any;
 
   if (!req.isAuthenticated() || !user.expires_at) {

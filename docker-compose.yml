@@ -1,0 +1,72 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: cheesefinder-db
+    environment:
+      POSTGRES_USER: cheesefinder_user
+      POSTGRES_PASSWORD: cheesefinder_password
+      POSTGRES_DB: cheesefinder_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cheesefinder_user -d cheesefinder_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Application (Development)
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: cheesefinder-app-dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://cheesefinder_user:cheesefinder_password@postgres:5432/cheesefinder_db
+      PORT: 5000
+      REPL_ID: local-dev-client
+      ISSUER_URL: https://replit.com/oidc
+      SESSION_SECRET: local-dev-session-secret-change-in-production
+      DEV_MODE: true
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount source code for hot reloading
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm run dev
+
+  # Application (Production)
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: cheesefinder-app-prod
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://cheesefinder_user:cheesefinder_password@postgres:5432/cheesefinder_db
+      PORT: 5000
+      REPL_ID: local-prod-client
+      ISSUER_URL: https://replit.com/oidc
+      SESSION_SECRET: local-prod-session-secret-change-in-production
+      DEV_MODE: false
+    ports:
+      - "5001:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+    driver: local

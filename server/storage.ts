@@ -55,18 +55,50 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    try {
+      // If we have both ID and email, check for any existing user by email
+      // If exists and ID is different, delete the old one to recreate with correct ID
+      if (userData.id && userData.email) {
+        const [existingByEmail] = await db.select().from(users).where(eq(users.email, userData.email));
+        if (existingByEmail && existingByEmail.id !== userData.id) {
+          // Delete the existing user with wrong ID to recreate with correct ID
+          await db.delete(users).where(eq(users.id, existingByEmail.id));
+        }
+      }
+
+      // Check if user already exists by the target ID
+      let existingUser: User | undefined;
+      if (userData.id) {
+        [existingUser] = await db.select().from(users).where(eq(users.id, userData.id));
+      }
+      
+      if (existingUser) {
+        // Update existing user
+        const [updatedUser] = await db
+          .update(users)
+          .set({
+            ...userData,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existingUser.id))
+          .returning();
+        return updatedUser;
+      } else {
+        // Insert new user
+        const [newUser] = await db
+          .insert(users)
+          .values({
+            ...userData,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        return newUser;
+      }
+    } catch (error: any) {
+      console.error("Error in upsertUser:", error);
+      throw error;
+    }
   }
 
   // Questionnaire operations
