@@ -1,0 +1,347 @@
+version: '3'
+
+# Cheesefinder - Development Task Automation
+# This Taskfile provides easy commands for development, testing, and deployment
+
+env:
+  NODE_ENV: development
+  DATABASE_URL: postgres://cheesefinder_user:cheesefinder_password@localhost:5432/cheesefinder_db
+  DEV_PORT: 5000
+  PROD_PORT: 5001
+
+vars:
+  APP_NAME: cheesefinder
+  DEV_CONTAINER: cheesefinder-app-dev
+  PROD_CONTAINER: cheesefinder-app-prod
+  DB_CONTAINER: cheesefinder-db
+
+tasks:
+  # === SETUP TASKS ===
+  
+  setup:
+    desc: "🚀 Complete project setup (first time setup)"
+    cmds:
+      - task: setup:env
+      - task: setup:deps
+      - task: setup:docker
+      - task: db:setup
+    silent: false
+
+  setup:env:
+    desc: "📋 Setup environment variables"
+    cmds:
+      - |
+        if [ ! -f .env ]; then
+          if [ -f .env.example ]; then
+            cp .env.example .env
+            echo "✅ Created .env file from .env.example"
+          else
+            echo "⚠️  No .env.example found, creating basic .env"
+            cat > .env << EOF
+        NODE_ENV=development
+        DATABASE_URL=postgres://cheesefinder_user:cheesefinder_password@localhost:5432/cheesefinder_db
+        PORT=5000
+        SESSION_SECRET=local-dev-session-secret-change-in-production
+        REPL_ID=local-dev-client
+        ISSUER_URL=https://replit.com/oidc
+        DEV_MODE=true
+        EOF
+          fi
+          echo "📝 Please review and update .env file as needed"
+        else
+          echo "✅ .env file already exists"
+        fi
+    silent: true
+
+  setup:deps:
+    desc: "📦 Install dependencies"
+    cmds:
+      - npm install
+      - echo "✅ Dependencies installed"
+
+  setup:docker:
+    desc: "🐳 Setup Docker environment"
+    deps: [setup:env]
+    cmds:
+      - docker-compose pull
+      - echo "✅ Docker images pulled"
+
+  # === DEVELOPMENT TASKS ===
+
+  dev:
+    desc: "🔧 Start development environment (Docker)"
+    deps: [docker:up]
+    cmds:
+      - echo "🌐 Development server starting at http://localhost:{{.DEV_PORT}}"
+      - echo "📊 Database available at localhost:5432"
+      - echo "🔍 Use 'task logs' to view application logs"
+      - echo "🛑 Use 'task stop' to stop all services"
+
+  dev:local:
+    desc: "🔧 Start development server (local Node.js)"
+    deps: [setup:deps, db:ensure]
+    cmds:
+      - npm run dev
+
+  build:
+    desc: "🏗️  Build application for production"
+    cmds:
+      - npm run build
+      - echo "✅ Build completed"
+
+  build:docker:
+    desc: "🐳 Build Docker images"
+    cmds:
+      - docker-compose build
+      - echo "✅ Docker images built"
+
+  # === DOCKER TASKS ===
+
+  docker:up:
+    desc: "🐳 Start Docker services"
+    cmds:
+      - docker-compose up -d --build
+      - task: docker:wait-db
+      - task: db:migrate
+
+  docker:up:prod:
+    desc: "🐳 Start production Docker services"
+    cmds:
+      - docker-compose --profile production up -d --build
+      - task: docker:wait-db
+      - task: db:migrate
+
+  docker:down:
+    desc: "🐳 Stop Docker services"
+    cmds:
+      - docker-compose down
+
+  docker:restart:
+    desc: "🔄 Restart Docker services"
+    cmds:
+      - task: docker:down
+      - task: docker:up
+
+  docker:wait-db:
+    desc: "⏳ Wait for database to be ready"
+    cmds:
+      - |
+        echo "⏳ Waiting for database to be ready..."
+        for i in {1..30}; do
+          if docker-compose exec -T postgres pg_isready -U cheesefinder_user -d cheesefinder_db > /dev/null 2>&1; then
+            echo "✅ Database is ready"
+            break
+          fi
+          if [ $i -eq 30 ]; then
+            echo "❌ Database failed to start within 30 seconds"
+            exit 1
+          fi
+          sleep 1
+        done
+    silent: true
+
+  # === DATABASE TASKS ===
+
+  db:setup:
+    desc: "🗄️  Complete database setup"
+    cmds:
+      - task: db:ensure
+      - task: db:migrate
+
+  db:ensure:
+    desc: "🗄️  Ensure database is running"
+    cmds:
+      - |
+        if ! docker ps --format "table {{.Names}}" | grep -q "{{.DB_CONTAINER}}"; then
+          echo "🚀 Starting database..."
+          docker-compose up -d postgres
+          task docker:wait-db
+        else
+          echo "✅ Database is already running"
+        fi
+
+  db:migrate:
+    desc: "🗄️  Run database migrations"
+    cmds:
+      - |
+        if docker ps --format "table {{.Names}}" | grep -q "{{.DEV_CONTAINER}}"; then
+          docker-compose exec -T {{.DEV_CONTAINER}} npm run db:push
+        else
+          npm run db:push
+        fi
+      - echo "✅ Database migrations completed"
+
+  db:reset:
+    desc: "🗄️  Reset database (⚠️  DESTRUCTIVE)"
+    prompt: "This will delete all data. Are you sure?"
+    cmds:
+      - docker-compose down -v
+      - docker-compose up -d postgres
+      - task: docker:wait-db
+      - task: db:migrate
+      - echo "✅ Database reset completed"
+
+  db:shell:
+    desc: "🗄️  Connect to database shell"
+    cmds:
+      - docker-compose exec postgres psql -U cheesefinder_user -d cheesefinder_db
+
+  db:dump:
+    desc: "🗄️  Create database backup"
+    cmds:
+      - |
+        timestamp=$(date +%Y%m%d_%H%M%S)
+        docker-compose exec -T postgres pg_dump -U cheesefinder_user cheesefinder_db > "backup_${timestamp}.sql"
+        echo "✅ Database backup created: backup_${timestamp}.sql"
+
+  # === TESTING TASKS ===
+
+  test:
+    desc: "🧪 Run all tests"
+    cmds:
+      - task: test:types
+      - task: test:lint
+      - echo "✅ All tests passed"
+
+  test:types:
+    desc: "🔍 Run TypeScript type checking"
+    cmds:
+      - npm run check
+      - echo "✅ TypeScript check passed"
+
+  test:lint:
+    desc: "🔍 Run linting (placeholder - add your linter)"
+    cmds:
+      - echo "ℹ️  No linter configured. Consider adding ESLint or Prettier"
+
+  # === UTILITY TASKS ===
+
+  logs:
+    desc: "📋 View application logs"
+    cmds:
+      - docker-compose logs -f {{.DEV_CONTAINER}}
+
+  logs:db:
+    desc: "📋 View database logs"
+    cmds:
+      - docker-compose logs -f {{.DB_CONTAINER}}
+
+  logs:all:
+    desc: "📋 View all service logs"
+    cmds:
+      - docker-compose logs -f
+
+  shell:
+    desc: "🐚 Access application container shell"
+    cmds:
+      - docker-compose exec {{.DEV_CONTAINER}} bash
+
+  shell:db:
+    desc: "🐚 Access database container shell"
+    cmds:
+      - docker-compose exec {{.DB_CONTAINER}} bash
+
+  status:
+    desc: "📊 Show service status"
+    cmds:
+      - echo "=== Docker Services ==="
+      - docker-compose ps
+      - echo ""
+      - echo "=== Application Health ==="
+      - |
+        if curl -f http://localhost:{{.DEV_PORT}}/health > /dev/null 2>&1; then
+          echo "✅ Application is healthy"
+        else
+          echo "❌ Application is not responding"
+        fi
+      - echo ""
+      - echo "=== Database Health ==="
+      - |
+        if docker-compose exec -T postgres pg_isready -U cheesefinder_user -d cheesefinder_db > /dev/null 2>&1; then
+          echo "✅ Database is healthy"
+        else
+          echo "❌ Database is not responding"
+        fi
+
+  clean:
+    desc: "🧹 Clean up development environment"
+    cmds:
+      - task: docker:down
+      - docker-compose down -v --remove-orphans
+      - docker system prune -f
+      - echo "✅ Cleanup completed"
+
+  # === PRODUCTION TASKS ===
+
+  prod:start:
+    desc: "🚀 Start production environment"
+    cmds:
+      - task: docker:up:prod
+      - echo "🌐 Production server running at http://localhost:{{.PROD_PORT}}"
+
+  prod:stop:
+    desc: "🛑 Stop production environment"
+    cmds:
+      - docker-compose --profile production down
+
+  prod:logs:
+    desc: "📋 View production logs"
+    cmds:
+      - docker-compose logs -f {{.PROD_CONTAINER}}
+
+  # === CONVENIENCE ALIASES ===
+
+  start:
+    desc: "🚀 Start development (alias for dev)"
+    cmds:
+      - task: dev
+
+  stop:
+    desc: "🛑 Stop all services"
+    cmds:
+      - task: docker:down
+
+  restart:
+    desc: "🔄 Restart all services"
+    cmds:
+      - task: docker:restart
+
+  # === HELP AND INFO ===
+
+  info:
+    desc: "ℹ️  Show project information"
+    cmds:
+      - echo "🧀 Cheesefinder Development Environment"
+      - echo "======================================"
+      - echo ""
+      - echo "📂 Project Structure:"
+      - echo "   - client/     - React frontend"
+      - echo "   - server/     - Express backend"
+      - echo "   - shared/     - Shared TypeScript types"
+      - echo ""
+      - echo "🔧 Key Technologies:"
+      - echo "   - Frontend - React + TypeScript + Vite + Tailwind"
+      - echo "   - Backend - Express + TypeScript"
+      - echo "   - Database - PostgreSQL + Drizzle ORM"
+      - echo "   - Container - Docker + Docker Compose"
+      - echo ""
+      - echo "🌐 Development URLs:"
+      - echo "   - Application - http://localhost:$DEV_PORT"
+      - echo "   - Database - localhost:5432"
+      - echo ""
+      - echo "📝 Common Commands:"
+      - echo "   task setup     - Complete first-time setup"
+      - echo "   task dev       - Start development environment"
+      - echo "   task logs      - View application logs"
+      - echo "   task db:shell  - Connect to database"
+      - echo "   task status    - Check service health"
+      - echo "   task stop      - Stop all services"
+      - echo ""
+      - echo "📚 For more commands, run - task --list"
+
+  default:
+    desc: "Show available tasks"
+    cmds:
+      - task: info
+      - echo ""
+      - task --list
